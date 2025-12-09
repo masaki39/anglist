@@ -1,0 +1,32 @@
+# Python cache and virtual envs
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.env/
+*.egg-info/
+
+# Build and CMake artifacts
+/build*/
+**/CMakeFiles/
+**/[Cc]MakeCache.txt
+**/cmake_install.cmake
+**/install_manifest.txt
+**/Makefile
+**/CTestTestfile.cmake
+**/compile_commands.json
+**/Testing/Temporary/
+
+# IDE and OS noise
+.vscode/
+.idea/
+*.swp
+*~
+*.user
+*.orig
+.DS_Store
+
+*.png
