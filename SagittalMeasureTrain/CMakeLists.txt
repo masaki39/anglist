@@ -1,10 +1,9 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME SagittalMeasureAssist)
+set(MODULE_NAME SagittalMeasureTrain)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
-  angles.py
   )
 
 set(MODULE_PYTHON_RESOURCES

@@ -19,6 +19,7 @@ include(${Slicer_USE_FILE})
 #-----------------------------------------------------------------------------
 # Extension modules
 add_subdirectory(SagittalMeasureAssist)
+add_subdirectory(SagittalMeasureTrain)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
