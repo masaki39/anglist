@@ -23,3 +23,7 @@ Lateral spine X-ray helper for sagittal alignment measurement and MLデータ作
 - ONNX Runtime等による自動ランドマーク提案の追加。  
 - エクスポート時の簡易QA（オーバーレイや不足チェック強化）。  
 - 参考トレーニングスクリプト（PyTorch）の提供。
+
+## テスト（純Python）
+- 事前準備不要で、毎回ワンショット実行:  
+  `uv run python -m pytest`
