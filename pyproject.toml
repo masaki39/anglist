@@ -10,3 +10,16 @@ dependencies = []
 dev = [
     "pytest>=9.0.2",
 ]
+
+# Training dependencies (CPU想定。GPU版が必要なら環境に合わせて調整してください)
+[tool.uv]
+dev-dependencies = []
+
+[project.optional-dependencies]
+ml = [
+    "torch>=2.4.0",
+    "torchvision>=0.19.0",
+    "numpy>=1.26.0",
+    "tqdm>=4.66.0",
+    "onnxruntime>=1.18.0",
+]

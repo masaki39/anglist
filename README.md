@@ -27,3 +27,16 @@ Lateral spine X-ray helper for sagittal alignment measurement and MLデータ作
 ## テスト（純Python）
 - 事前準備不要で、毎回ワンショット実行:  
   `uv run python -m pytest`
+
+## 学習（外部uv環境で実施）
+- 依存インストール（CPU用の軽量構成）:  
+  `uv sync --extra ml`  
+- 学習:  
+  `uv run python train/train.py --data-dir /path/to/exported --save-dir runs --epochs 20`  
+  - 入力: `*_image.npy` と `*_landmarks.json`（Slicerエクスポート形式）  
+  - モデル: 軽量UNetで5チャネルのヒートマップを出力  
+  - 出力: `runs/best.pt`, `runs/last.pt`  
+- ONNXエクスポート（Slicer推論用）:  
+  `uv run python train/export_onnx.py --checkpoint runs/best.pt --output runs/best.onnx --height 512 --width 512`  
+- ONNX簡易推論（任意、onnxruntime使用）:  
+  `uv run python train/infer_onnx.py --model runs/best.onnx --image sample_image.npy --json sample_landmarks.json`
