@@ -6,6 +6,7 @@ import qt
 import slicer
 
 from logic_export import ExportLogic, REQUIRED_LABELS_ORDERED
+from logic_inference import OnnxInferenceLogic
 
 
 class AssistController:
@@ -14,11 +15,13 @@ class AssistController:
     Keeps the entrypoint thin and encapsulates event handling.
     """
 
-    def __init__(self, measure_ui, export_ui, logic):
+    def __init__(self, measure_ui, export_ui, auto_ui, logic):
         self.measure_ui = measure_ui
         self.export_ui = export_ui
+        self.auto_ui = auto_ui
         self.logic = logic
         self.counter = 1
+        self.infer = OnnxInferenceLogic()
         self._connect_signals()
         self._update_counter_preview()
 
@@ -31,6 +34,8 @@ class AssistController:
         self.export_ui.exportButton.connect("clicked()", self.onExport)
         self.export_ui.browseButton.connect("clicked()", self.onBrowse)
         self.export_ui.prefixEdit.textChanged.connect(lambda *_: self._update_counter_preview())
+        self.auto_ui.modelBrowseButton.connect("clicked()", self.onBrowseModel)
+        self.auto_ui.runButton.connect("clicked()", self.onRunInference)
 
     # --- Handlers ---
     def onCreateMarkup(self):
@@ -75,6 +80,45 @@ class AssistController:
 
         self._updateResultsTable(angles)
         self.measure_ui.statusLabel.text = "計測を更新しました。"
+
+    def onBrowseModel(self):
+        file_path = qt.QFileDialog.getOpenFileName(
+            slicer.util.mainWindow(), "ONNXモデルを選択", "", "ONNX (*.onnx)"
+        )
+        if file_path:
+            self.auto_ui.modelPathEdit.setText(file_path)
+
+    def onRunInference(self):
+        volumeNode = self.measure_ui.volumeSelector.currentNode()
+        if volumeNode is None:
+            self.auto_ui.statusLabel.setText("エラー: Volumeが選択されていません。")
+            return
+
+        markupNode = self.measure_ui.markupSelector.currentNode()
+        if markupNode is None:
+            markupNode = self._ensureMarkupNodeExists()
+            self.measure_ui.markupSelector.setCurrentNode(markupNode)
+
+        model_path = self.auto_ui.modelPathEdit.text.strip()
+        if not model_path:
+            self.auto_ui.statusLabel.setText("エラー: ONNXモデルパスを指定してください。")
+            return
+
+        target_h = int(self.auto_ui.heightSpin.value)
+        target_w = int(self.auto_ui.widthSpin.value)
+
+        try:
+            # 再ロードは毎回（単純性優先）。必要ならパスが同じ場合はスキップも可。
+            self.infer.load_model(model_path, (target_h, target_w))
+            coords_ij = self.infer.predict_and_place(volumeNode, markupNode)
+        except Exception as exc:
+            logging.exception("Inference failed")
+            self.auto_ui.statusLabel.setText(f"エラー: 推論に失敗しました ({exc})")
+            return
+
+        self.auto_ui.statusLabel.setText("推論完了: Markupsに自動配置しました。")
+        # 計測も更新しておく
+        self.onUpdateMeasurements()
 
     def onBrowse(self):
         directory = qt.QFileDialog.getExistingDirectory(

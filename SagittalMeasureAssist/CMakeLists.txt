@@ -7,8 +7,10 @@ set(MODULE_PYTHON_SCRIPTS
   assist_controller.py
   logic_angles.py
   logic_export.py
+  logic_inference.py
   ui_measure.py
   ui_export.py
+  ui_auto.py
   )
 
 set(MODULE_PYTHON_RESOURCES

@@ -20,6 +20,7 @@ import logic_angles
 from assist_controller import AssistController
 from ui_measure import MeasureUI
 from ui_export import ExportUI
+from ui_auto import AutoUI
 
 
 class SagittalMeasureAssist(ScriptedLoadableModule):
@@ -50,9 +51,10 @@ class SagittalMeasureAssistWidget(ScriptedLoadableModuleWidget):
         # UI sections
         self.measureUI = MeasureUI(self.layout)
         self.exportUI = ExportUI(self.layout)
+        self.autoUI = AutoUI(self.layout)
 
         # Wire interactions via controller (keeps this entrypoint slim)
-        self.controller = AssistController(self.measureUI, self.exportUI, self.logic)
+        self.controller = AssistController(self.measureUI, self.exportUI, self.autoUI, self.logic)
 
         self.layout.addStretch(1)
 
