@@ -9,7 +9,6 @@ from typing import List, Tuple
 import numpy as np
 import slicer
 import vtk
-from PIL import Image
 
 from logic_angles import REQUIRED_KEYS
 
@@ -22,19 +21,34 @@ def _percentile_clip_norm(img: np.ndarray, p_low=1.0, p_high=99.0) -> np.ndarray
     return img.astype(np.float32)
 
 
-    def _pad_resize(img: np.ndarray, target_hw: Tuple[int, int]):
+def _resize_bilinear(img: np.ndarray, new_h: int, new_w: int) -> np.ndarray:
+    """
+    Minimal bilinear resize using separable 1D interpolation (no external deps).
+    img: (H,W)
+    """
+    h, w = img.shape
+    x_old = np.arange(w)
+    x_new = np.linspace(0, w - 1, new_w)
+    # interpolate along x for each row
+    tmp = np.zeros((h, new_w), dtype=np.float32)
+    for i in range(h):
+        tmp[i] = np.interp(x_new, x_old, img[i])
+    y_old = np.arange(h)
+    y_new = np.linspace(0, h - 1, new_h)
+    out = np.zeros((new_h, new_w), dtype=np.float32)
+    for j in range(new_w):
+        out[:, j] = np.interp(y_new, y_old, tmp[:, j])
+    return out
+
+
+def _pad_resize(img: np.ndarray, target_hw: Tuple[int, int]):
     """縦横比を維持してリサイズし、余白ゼロパディング。返り値: 画像, scale, pad_x, pad_y。"""
     h, w = img.shape
     th, tw = target_hw
     scale = min(th / h, tw / w)
     new_h = int(round(h * scale))
     new_w = int(round(w * scale))
-    # bilinear resize via OpenCV代替としてnumpyではなくvtk/torch使わず、簡易実装用に scipyなしで処理するのは困難。
-    # ここでは Slicer にバンドルされる SimpleITK があれば使うが、簡素化のため numpy+torch なしでパッドのみ実施。
-    # 代替としてnp.interpで2Dリサイズを実装するのは煩雑なので、後段のONNX Runtimeに合わせ torch が前提になる。
-    # ここでは、最小依存のため slicer.util.arrayFromVolume -> vtkImageResliceを使う簡易版を避け、
-    # モデル学習と同じtorchリサイズに合わせて、ここでは numpy ベースの最近傍に留める。
-    resized = np.array(Image.fromarray(img).resize((new_w, new_h), resample=Image.BILINEAR))
+    resized = _resize_bilinear(img, new_h, new_w)
 
     pad_y = (th - new_h) // 2
     pad_x = (tw - new_w) // 2
