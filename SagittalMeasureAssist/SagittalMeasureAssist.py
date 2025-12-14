@@ -13,16 +13,11 @@ suggestion. Geometry calculations are isolated in the Logic class so automated
 detectors can be plugged in later.
 """
 
-import logging
-import math
-import os
-
-import qt
 import slicer
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule, ScriptedLoadableModuleWidget, ScriptedLoadableModuleLogic, ScriptedLoadableModuleTest
 
 import logic_angles
-from logic_export import ExportLogic, REQUIRED_LABELS_ORDERED
+from assist_controller import AssistController
 from ui_measure import MeasureUI
 from ui_export import ExportUI
 
@@ -51,180 +46,15 @@ class SagittalMeasureAssistWidget(ScriptedLoadableModuleWidget):
         ScriptedLoadableModuleWidget.setup(self)
 
         self.logic = SagittalMeasureAssistLogic()
-        self.counter = 1
 
         # UI sections
         self.measureUI = MeasureUI(self.layout)
-        self.exportUI = ExportUI(self.layout, initial_preview=self._format_counter_preview())
+        self.exportUI = ExportUI(self.layout)
 
-        # Short aliases for handlers
-        self.volumeSelector = self.measureUI.volumeSelector
-        self.markupSelector = self.measureUI.markupSelector
-        self.createMarkupButton = self.measureUI.createMarkupButton
-        self.clearMarkupButton = self.measureUI.clearMarkupButton
-        self.flipXAxisCheckBox = self.measureUI.flipXAxisCheckBox
-        self.updateButton = self.measureUI.updateButton
-        self.resultsTable = self.measureUI.resultsTable
-        self.statusLabel = self.measureUI.statusLabel
-
-        self.outputDirEdit = self.exportUI.outputDirEdit
-        self.caseIdEdit = self.exportUI.caseIdEdit
-        self.prefixEdit = self.exportUI.prefixEdit
-        self.overwriteCheck = self.exportUI.overwriteCheck
-        self.nextIdLabel = self.exportUI.nextIdLabel
-        self.exportButton = self.exportUI.exportButton
-        self.exportStatusLabel = self.exportUI.exportStatusLabel
-
-        # Signals
-        self.createMarkupButton.connect("clicked()", self.onCreateMarkup)
-        self.clearMarkupButton.connect("clicked()", self.onClearMarkups)
-        self.updateButton.connect("clicked()", self.onUpdateMeasurements)
-        self.exportButton.connect("clicked()", self.onExport)
-        self.exportUI.browseButton.connect("clicked()", self.onBrowse)
-        self.prefixEdit.textChanged.connect(lambda *_: self.nextIdLabel.setText(self._format_counter_preview()))
+        # Wire interactions via controller (keeps this entrypoint slim)
+        self.controller = AssistController(self.measureUI, self.exportUI, self.logic)
 
         self.layout.addStretch(1)
-
-    def onCreateMarkup(self):
-        fiducialNode = self._ensureMarkupNodeExists()
-        self.markupSelector.setCurrentNode(fiducialNode)
-        slicer.modules.markups.logic().StartPlaceMode(0)  # place a single point then exit place mode
-        self.statusLabel.text = "1点だけ配置モードです。点を置いたら、次の点も同じボタンで再度配置してください。"
-
-    def onClearMarkups(self):
-        markupNode = self.markupSelector.currentNode()
-        if markupNode is None:
-            self.statusLabel.text = "クリアできるMarkupsが選択されていません。"
-            return
-        markupNode.RemoveAllControlPoints()
-        self.statusLabel.text = "既存のポイントをクリアしました。"
-
-    def onUpdateMeasurements(self):
-        markupNode = self.markupSelector.currentNode()
-        if markupNode is None:
-            self.statusLabel.text = "エラー: Markupsが選択されていません。"
-            return
-        self._assignLandmarkLabels(markupNode)
-        if markupNode.GetNumberOfFiducials() != len(REQUIRED_LABELS_ORDERED):
-            self.statusLabel.text = "エラー: マークアップ点が5個ではありません。指定の順番で5点を配置してください。"
-            return
-
-        points = {}
-        coordsRAS = [0.0, 0.0, 0.0]
-        for idx, label in enumerate(REQUIRED_LABELS_ORDERED):
-            markupNode.GetNthFiducialPosition(idx, coordsRAS)
-            x = coordsRAS[0]
-            y = coordsRAS[1]
-            if self.flipXAxisCheckBox.isChecked():
-                x = -x
-            points[label] = (x, y)
-
-        try:
-            angles = self.logic.compute_angles_from_points(points)
-        except ValueError as exc:
-            self.statusLabel.text = f"エラー: {exc}"
-            return
-
-        self._updateResultsTable(angles)
-        self.statusLabel.text = "計測を更新しました。"
-
-    def onBrowse(self):
-        directory = qt.QFileDialog.getExistingDirectory(
-            slicer.util.mainWindow(), "出力先フォルダを選択"
-        )
-        if directory:
-            self.outputDirEdit.text = directory
-
-    def onExport(self):
-        volumeNode = self.volumeSelector.currentNode()
-        markupNode = self.markupSelector.currentNode()
-        outputDir = self.outputDirEdit.text.strip()
-        manualCaseId = self.caseIdEdit.text.strip()
-
-        if volumeNode is None:
-            self.exportStatusLabel.text = "エラー: Volumeが選択されていません。"
-            return
-        if markupNode is None:
-            self.exportStatusLabel.text = "エラー: Markupsが選択されていません。"
-            return
-        if not outputDir:
-            self.exportStatusLabel.text = "エラー: 出力先フォルダを指定してください。"
-            return
-
-        caseId = manualCaseId if manualCaseId else self._find_next_case_id(outputDir)
-        if caseId is None:
-            self.exportStatusLabel.text = "エラー: 利用可能なケースIDを見つけられませんでした。"
-            return
-
-        try:
-            exporter = ExportLogic(flip_x_axis=self.flipXAxisCheckBox.isChecked())
-            result = exporter.export_training_sample(
-                volumeNode=volumeNode,
-                markupNode=markupNode,
-                outputDir=outputDir,
-                caseId=caseId,
-                overwrite=self.overwriteCheck.isChecked(),
-            )
-        except ValueError as exc:
-            self.exportStatusLabel.text = f"エラー: {exc}"
-            return
-        except Exception:
-            logging.exception("Export failed")
-            self.exportStatusLabel.text = "エラー: エクスポートに失敗しました。詳細はPython Consoleを確認してください。"
-            return
-
-        self.exportStatusLabel.text = (
-            "エクスポート完了: "
-            f"{os.path.basename(result['npy'])}, "
-            f"{os.path.basename(result['json'])}"
-        )
-        if not manualCaseId:
-            self.counter += 1
-            self.nextIdLabel.setText(self._format_counter_preview())
-
-    def _ensureMarkupNodeExists(self):
-        current = self.markupSelector.currentNode()
-        if current and current.IsA("vtkMRMLMarkupsFiducialNode"):
-            return current
-        fiducialNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode")
-        displayNode = fiducialNode.GetDisplayNode()
-        if displayNode:
-            displayNode.SetSelectedColor(1.0, 0.4, 0.0)
-            displayNode.SetGlyphScale(1.5)
-        return fiducialNode
-
-    def _assignLandmarkLabels(self, markupNode):
-        """Rename existing points in order so labels match the required landmarks."""
-        count = min(markupNode.GetNumberOfFiducials(), len(REQUIRED_LABELS_ORDERED))
-        for i in range(count):
-            markupNode.SetNthControlPointLabel(i, REQUIRED_LABELS_ORDERED[i])
-
-    def _updateResultsTable(self, anglesDict):
-        params = ["PI", "PT", "SS", "LL"]
-        for i, name in enumerate(params):
-            value = anglesDict.get(name, float("nan"))
-            if math.isnan(value):
-                text = "--"
-            else:
-                text = f"{value:.1f}°"
-            self.resultsTable.item(i, 1).setText(text)
-
-    def _format_counter_preview(self):
-        prefix = self.prefixEdit.text().strip() or "case"
-        return f"{prefix}{self.counter:03d}"
-
-    def _find_next_case_id(self, outputDir):
-        prefix = self.prefixEdit.text().strip() or "case"
-        for idx in range(self.counter, 10000):
-            candidate = f"{prefix}{idx:03d}"
-            npy = os.path.join(outputDir, f"{candidate}_image.npy")
-            json_path = os.path.join(outputDir, f"{candidate}_landmarks.json")
-            nrrd_path = os.path.join(outputDir, f"{candidate}_volume.nrrd")
-            if self.overwriteCheck.isChecked():
-                return candidate
-            if not (os.path.exists(npy) or os.path.exists(json_path) or os.path.exists(nrrd_path)):
-                return candidate
-        return None
 
 
 class SagittalMeasureAssistLogic(ScriptedLoadableModuleLogic):

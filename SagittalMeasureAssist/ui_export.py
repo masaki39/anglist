@@ -7,7 +7,7 @@ class ExportUI:
     Builds the export panel (output dir, IDs, overwrite, trigger button).
     """
 
-    def __init__(self, parentLayout, initial_preview="case001"):
+    def __init__(self, parentLayout):
         self.button = ctk.ctkCollapsibleButton()
         self.button.text = "エクスポート（学習データ）"
         parentLayout.addWidget(self.button)
@@ -29,7 +29,7 @@ class ExportUI:
         self.prefixEdit = qt.QLineEdit("case")
         self.overwriteCheck = qt.QCheckBox("既存があれば上書きする")
         self.overwriteCheck.checked = False
-        self.nextIdLabel = qt.QLabel(initial_preview)
+        self.nextIdLabel = qt.QLabel("case001")
         autoLayout = qt.QHBoxLayout()
         autoLayout.addWidget(qt.QLabel("プレフィックス:"))
         autoLayout.addWidget(self.prefixEdit)
@@ -45,3 +45,6 @@ class ExportUI:
         self.exportStatusLabel = qt.QLabel("")
         self.exportStatusLabel.wordWrap = True
         form.addRow(self.exportStatusLabel)
+
+    def set_next_id_preview(self, text):
+        self.nextIdLabel.setText(text)
