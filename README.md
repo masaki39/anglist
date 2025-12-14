@@ -31,7 +31,7 @@ Lateral spine X-ray helper for sagittal alignment measurement and MLデータ作
 ## 学習（外部uv環境で実施）
 - 依存インストール（CPU用の軽量構成）:  
   `uv sync --extra ml`  
-- 学習:  
+- 学習（アスペクト比維持のパディングリサイズ）:  
   `uv run python train/train.py --data-dir /path/to/exported --save-dir runs --epochs 20`  
   - 入力: `*_image.npy` と `*_landmarks.json`（Slicerエクスポート形式）  
   - モデル: 軽量UNetで5チャネルのヒートマップを出力  

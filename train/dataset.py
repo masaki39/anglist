@@ -19,11 +19,26 @@ def _percentile_clip_norm(img: np.ndarray, p_low=1.0, p_high=99.0) -> np.ndarray
     return img.astype(np.float32)
 
 
-def _resize_tensor(img: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
+def _resize_with_padding(img: torch.Tensor, target_size: Tuple[int, int]):
+    """
+    Resize with aspect ratio preserved, pad with zeros to target_size (H, W).
+    Returns resized+pad image and (scale, pad_x, pad_y) for coordinate mapping.
+    """
     # img: (1, H, W)
+    _, h, w = img.shape
+    th, tw = target_size
+    scale = min(th / h, tw / w)
+    new_h = int(round(h * scale))
+    new_w = int(round(w * scale))
+
     img = img.unsqueeze(0)  # (1,1,H,W)
-    img = F.interpolate(img, size=size, mode="bilinear", align_corners=False)
-    return img.squeeze(0)
+    img = F.interpolate(img, size=(new_h, new_w), mode="bilinear", align_corners=False)
+    img = img.squeeze(0)
+
+    pad_y = (th - new_h) // 2
+    pad_x = (tw - new_w) // 2
+    img = F.pad(img, (pad_x, tw - new_w - pad_x, pad_y, th - new_h - pad_y))
+    return img, scale, pad_x, pad_y
 
 
 def _make_heatmaps(coords: List[Tuple[float, float]], size: Tuple[int, int], sigma: float) -> torch.Tensor:
@@ -90,15 +105,14 @@ class HeatmapDataset(Dataset):
 
         img_np = _percentile_clip_norm(img_np, *self.percentile_clip)
         img_t = torch.from_numpy(img_np).unsqueeze(0)  # (1,H,W)
-        img_t = _resize_tensor(img_t, self.resize)  # (1,Hr,Wr)
+        img_t, scale, pad_x, pad_y = _resize_with_padding(img_t, self.resize)  # (1,Ht,Wt)
 
-        # Rescale coords to resized space
-        h0, w0 = img_np.shape
-        hr, wr = self.resize
+        # Rescale coords to resized+pad space
         coords_resized = []
         for (x, y) in coords:
-            coords_resized.append((x * wr / w0, y * hr / h0))
+            coords_resized.append((x * scale + pad_x, y * scale + pad_y))
 
+        hr, wr = self.resize
         heatmap = _make_heatmaps(coords_resized, (hr, wr), sigma=self.sigma)
         coords_t = torch.tensor(coords_resized, dtype=torch.float32)
         return {
