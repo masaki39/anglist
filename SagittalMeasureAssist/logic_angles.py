@@ -91,3 +91,38 @@ def lumbosacral_lordosis_deg(v_L1, v_S1):
     slope_S1 = signed_slope_angle_deg(v_S1)
     ll = slope_S1 - slope_L1
     return wrap_signed_angle(ll)
+
+
+REQUIRED_KEYS = ["FH", "S1_ant", "S1_post", "L1_ant", "L1_post"]
+
+
+def compute_angles_from_points(points):
+    """
+    Compute PI, PT, SS, and LL from landmark points.
+
+    Args:
+        points (dict): Mapping of landmark names to (x, y) tuples.
+    Returns:
+        dict: {"PI": deg, "PT": deg, "SS": deg, "LL": deg}
+    """
+    missing = [k for k in REQUIRED_KEYS if k not in points]
+    if missing:
+        raise ValueError(f"Missing points: {', '.join(missing)}")
+
+    FH = points["FH"]
+    S1_ant = points["S1_ant"]
+    S1_post = points["S1_post"]
+    L1_ant = points["L1_ant"]
+    L1_post = points["L1_post"]
+
+    v_S1 = vector_from_points(S1_ant, S1_post)
+    v_L1 = vector_from_points(L1_ant, L1_post)
+    S1_mid = ((S1_ant[0] + S1_post[0]) / 2.0, (S1_ant[1] + S1_post[1]) / 2.0)
+    v_pelvis = vector_from_points(FH, S1_mid)
+
+    SS = signed_slope_angle_deg(v_S1)
+    PT = signed_vertical_angle_deg(v_pelvis)
+    LL = lumbosacral_lordosis_deg(v_L1, v_S1)
+    PI_modified = pelvic_incidence_deg(v_pelvis, v_S1)
+
+    return {"PI": PI_modified, "PT": PT, "SS": SS, "LL": LL}

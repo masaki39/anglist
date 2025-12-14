@@ -13,19 +13,18 @@ suggestion. Geometry calculations are isolated in the Logic class so automated
 detectors can be plugged in later.
 """
 
-import json
 import logging
 import math
 import os
 
 import qt
-import ctk
 import slicer
-import vtk
-import numpy as np
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule, ScriptedLoadableModuleWidget, ScriptedLoadableModuleLogic, ScriptedLoadableModuleTest
 
-import angles
+import logic_angles
+from logic_export import ExportLogic, REQUIRED_LABELS_ORDERED
+from ui_measure import MeasureUI
+from ui_export import ExportUI
 
 
 class SagittalMeasureAssist(ScriptedLoadableModule):
@@ -52,130 +51,36 @@ class SagittalMeasureAssistWidget(ScriptedLoadableModuleWidget):
         ScriptedLoadableModuleWidget.setup(self)
 
         self.logic = SagittalMeasureAssistLogic()
-
-        parametersCollapsibleButton = ctk.ctkCollapsibleButton()
-        parametersCollapsibleButton.text = "計測"
-        self.layout.addWidget(parametersCollapsibleButton)
-
-        parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
-
-        self.volumeSelector = slicer.qMRMLNodeComboBox()
-        self.volumeSelector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
-        self.volumeSelector.selectNodeUponCreation = True
-        self.volumeSelector.addEnabled = False
-        self.volumeSelector.removeEnabled = False
-        self.volumeSelector.noneEnabled = True
-        self.volumeSelector.showHidden = False
-        self.volumeSelector.showChildNodeTypes = False
-        self.volumeSelector.setMRMLScene(slicer.mrmlScene)
-        self.volumeSelector.setToolTip("対象の側面X線Volumeを選択します（計測のみなら未選択でも可）。")
-        parametersFormLayout.addRow("Volume:", self.volumeSelector)
-
-        self.markupSelector = slicer.qMRMLNodeComboBox()
-        self.markupSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
-        self.markupSelector.selectNodeUponCreation = True
-        self.markupSelector.addEnabled = False
-        self.markupSelector.removeEnabled = False
-        self.markupSelector.noneEnabled = True
-        self.markupSelector.showHidden = False
-        self.markupSelector.showChildNodeTypes = False
-        self.markupSelector.setMRMLScene(slicer.mrmlScene)
-        self.markupSelector.setToolTip("Select or create a Markups Fiducial node for the 5 landmarks.")
-        parametersFormLayout.addRow("Markups:", self.markupSelector)
-
-        self.createMarkupButton = qt.QPushButton("新規作成 / 1点追加")
-        self.createMarkupButton.toolTip = "Markupsを作成し、1点だけ配置モードに入ります。次の点もこのボタンで追加してください。"
-        parametersFormLayout.addRow("Markupsを自動作成:", self.createMarkupButton)
-
-        self.clearMarkupButton = qt.QPushButton("配置点をクリア")
-        self.clearMarkupButton.toolTip = "選択中のMarkups内の既存ポイントをすべて削除します。"
-        parametersFormLayout.addRow("補助操作:", self.clearMarkupButton)
-
-        self.flipXAxisCheckBox = qt.QCheckBox("左右反転を補正（x軸反転）")
-        self.flipXAxisCheckBox.toolTip = "画像が左右逆（前方が左向き）で表示されている場合にチェック。計算時にx座標の符号を反転します。"
-        parametersFormLayout.addRow("左右反転補正:", self.flipXAxisCheckBox)
-
-        self.instructionsLabel = qt.QLabel(
-            "5つのランドマークを順番に配置してください:\n"
-            "1) L1_ant (L1頭側終板 前縁)\n"
-            "2) L1_post (L1頭側終板 後縁)\n"
-            "3) S1_ant (S1頭側終板 前縁)\n"
-            "4) S1_post (S1頭側終板 後縁)\n"
-            "5) FH (両側大腿骨頭の中心)"
-        )
-        self.instructionsLabel.wordWrap = True
-        parametersFormLayout.addRow("ランドマーク手順:", self.instructionsLabel)
-
-        self.updateButton = qt.QPushButton("計測を更新")
-        self.updateButton.toolTip = "Compute PI, PT, SS, and LL from the current 5 landmarks."
-        self.updateButton.enabled = True
-        parametersFormLayout.addRow(self.updateButton)
-
-        self.resultsTable = qt.QTableWidget()
-        self.resultsTable.setRowCount(4)
-        self.resultsTable.setColumnCount(2)
-        self.resultsTable.setHorizontalHeaderLabels(["Parameter", "Value (deg)"])
-        self.resultsTable.verticalHeader().hide()
-        self.resultsTable.horizontalHeader().setStretchLastSection(True)
-        params = ["PI", "PT", "SS", "LL"]
-        for i, name in enumerate(params):
-            nameItem = qt.QTableWidgetItem(name)
-            nameItem.setFlags(qt.Qt.ItemIsEnabled)
-            self.resultsTable.setItem(i, 0, nameItem)
-            valueItem = qt.QTableWidgetItem("--")
-            valueItem.setFlags(qt.Qt.ItemIsEnabled)
-            self.resultsTable.setItem(i, 1, valueItem)
-        parametersFormLayout.addRow("計測結果:", self.resultsTable)
-
-        self.statusLabel = qt.QLabel("")
-        self.statusLabel.wordWrap = True
-        parametersFormLayout.addRow(self.statusLabel)
-
-        # --- Export section ---
-        exportCollapsible = ctk.ctkCollapsibleButton()
-        exportCollapsible.text = "エクスポート（学習データ）"
-        self.layout.addWidget(exportCollapsible)
-        exportForm = qt.QFormLayout(exportCollapsible)
-
-        self.outputDirEdit = qt.QLineEdit()
-        self.outputDirEdit.placeholderText = "出力先フォルダ（例: /path/to/dataset）"
-        browseButton = qt.QPushButton("参照...")
-        dirLayout = qt.QHBoxLayout()
-        dirLayout.addWidget(self.outputDirEdit, 1)
-        dirLayout.addWidget(browseButton)
-        exportForm.addRow("出力先:", dirLayout)
-
-        self.caseIdEdit = qt.QLineEdit()
-        self.caseIdEdit.placeholderText = "手入力する場合はこちら（例: case001）"
-        exportForm.addRow("ケースID:", self.caseIdEdit)
-
         self.counter = 1
-        self.prefixEdit = qt.QLineEdit("case")
-        self.overwriteCheck = qt.QCheckBox("既存があれば上書きする")
-        self.overwriteCheck.checked = False
-        self.nextIdLabel = qt.QLabel(self._format_counter_preview())
-        autoLayout = qt.QHBoxLayout()
-        autoLayout.addWidget(qt.QLabel("プレフィックス:"))
-        autoLayout.addWidget(self.prefixEdit)
-        autoLayout.addWidget(qt.QLabel("次番号:"))
-        autoLayout.addWidget(self.nextIdLabel)
-        exportForm.addRow("自動採番:", autoLayout)
-        exportForm.addRow("", self.overwriteCheck)
 
-        self.exportButton = qt.QPushButton("エクスポート")
-        self.exportButton.toolTip = ".npy/.nrrd とランドマークJSON(角度付き)を書き出します。"
-        exportForm.addRow(self.exportButton)
+        # UI sections
+        self.measureUI = MeasureUI(self.layout)
+        self.exportUI = ExportUI(self.layout, initial_preview=self._format_counter_preview())
 
-        self.exportStatusLabel = qt.QLabel("")
-        self.exportStatusLabel.wordWrap = True
-        exportForm.addRow(self.exportStatusLabel)
+        # Short aliases for handlers
+        self.volumeSelector = self.measureUI.volumeSelector
+        self.markupSelector = self.measureUI.markupSelector
+        self.createMarkupButton = self.measureUI.createMarkupButton
+        self.clearMarkupButton = self.measureUI.clearMarkupButton
+        self.flipXAxisCheckBox = self.measureUI.flipXAxisCheckBox
+        self.updateButton = self.measureUI.updateButton
+        self.resultsTable = self.measureUI.resultsTable
+        self.statusLabel = self.measureUI.statusLabel
+
+        self.outputDirEdit = self.exportUI.outputDirEdit
+        self.caseIdEdit = self.exportUI.caseIdEdit
+        self.prefixEdit = self.exportUI.prefixEdit
+        self.overwriteCheck = self.exportUI.overwriteCheck
+        self.nextIdLabel = self.exportUI.nextIdLabel
+        self.exportButton = self.exportUI.exportButton
+        self.exportStatusLabel = self.exportUI.exportStatusLabel
 
         # Signals
         self.createMarkupButton.connect("clicked()", self.onCreateMarkup)
         self.clearMarkupButton.connect("clicked()", self.onClearMarkups)
         self.updateButton.connect("clicked()", self.onUpdateMeasurements)
         self.exportButton.connect("clicked()", self.onExport)
-        browseButton.connect("clicked()", self.onBrowse)
+        self.exportUI.browseButton.connect("clicked()", self.onBrowse)
         self.prefixEdit.textChanged.connect(lambda *_: self.nextIdLabel.setText(self._format_counter_preview()))
 
         self.layout.addStretch(1)
@@ -200,14 +105,13 @@ class SagittalMeasureAssistWidget(ScriptedLoadableModuleWidget):
             self.statusLabel.text = "エラー: Markupsが選択されていません。"
             return
         self._assignLandmarkLabels(markupNode)
-        if markupNode.GetNumberOfFiducials() != 5:
+        if markupNode.GetNumberOfFiducials() != len(REQUIRED_LABELS_ORDERED):
             self.statusLabel.text = "エラー: マークアップ点が5個ではありません。指定の順番で5点を配置してください。"
             return
 
-        pointLabels = ["L1_ant", "L1_post", "S1_ant", "S1_post", "FH"]
         points = {}
         coordsRAS = [0.0, 0.0, 0.0]
-        for idx, label in enumerate(pointLabels):
+        for idx, label in enumerate(REQUIRED_LABELS_ORDERED):
             markupNode.GetNthFiducialPosition(idx, coordsRAS)
             x = coordsRAS[0]
             y = coordsRAS[1]
@@ -253,12 +157,12 @@ class SagittalMeasureAssistWidget(ScriptedLoadableModuleWidget):
             return
 
         try:
-            result = self.logic.export_training_sample(
+            exporter = ExportLogic(flip_x_axis=self.flipXAxisCheckBox.isChecked())
+            result = exporter.export_training_sample(
                 volumeNode=volumeNode,
                 markupNode=markupNode,
                 outputDir=outputDir,
                 caseId=caseId,
-                flip_x_axis=self.flipXAxisCheckBox.isChecked(),
                 overwrite=self.overwriteCheck.isChecked(),
             )
         except ValueError as exc:
@@ -291,10 +195,9 @@ class SagittalMeasureAssistWidget(ScriptedLoadableModuleWidget):
 
     def _assignLandmarkLabels(self, markupNode):
         """Rename existing points in order so labels match the required landmarks."""
-        required_labels = ["L1_ant", "L1_post", "S1_ant", "S1_post", "FH"]
-        count = min(markupNode.GetNumberOfFiducials(), len(required_labels))
+        count = min(markupNode.GetNumberOfFiducials(), len(REQUIRED_LABELS_ORDERED))
         for i in range(count):
-            markupNode.SetNthControlPointLabel(i, required_labels[i])
+            markupNode.SetNthControlPointLabel(i, REQUIRED_LABELS_ORDERED[i])
 
     def _updateResultsTable(self, anglesDict):
         params = ["PI", "PT", "SS", "LL"]
@@ -327,125 +230,8 @@ class SagittalMeasureAssistWidget(ScriptedLoadableModuleWidget):
 class SagittalMeasureAssistLogic(ScriptedLoadableModuleLogic):
     """Geometry computations for sagittal parameters."""
 
-    REQUIRED_KEYS = ["FH", "S1_ant", "S1_post", "L1_ant", "L1_post"]
-    REQUIRED_LABELS_ORDERED = ["L1_ant", "L1_post", "S1_ant", "S1_post", "FH"]
-
     def compute_angles_from_points(self, points):
-        """
-        Compute PI, PT, SS, and LL from landmark points.
-
-        Args:
-            points (dict): Mapping of landmark names to (x, y) tuples.
-        Returns:
-            dict: {"PI": deg, "PT": deg, "SS": deg, "LL": deg}
-        """
-        missing = [k for k in self.REQUIRED_KEYS if k not in points]
-        if missing:
-            raise ValueError(f"Missing points: {', '.join(missing)}")
-
-        FH = points["FH"]
-        S1_ant = points["S1_ant"]
-        S1_post = points["S1_post"]
-        L1_ant = points["L1_ant"]
-        L1_post = points["L1_post"]
-
-        v_S1 = angles.vector_from_points(S1_ant, S1_post)
-        v_L1 = angles.vector_from_points(L1_ant, L1_post)
-        S1_mid = ((S1_ant[0] + S1_post[0]) / 2.0, (S1_ant[1] + S1_post[1]) / 2.0)
-        v_pelvis = angles.vector_from_points(FH, S1_mid)
-
-        SS = angles.signed_slope_angle_deg(v_S1)
-        PT = angles.signed_vertical_angle_deg(v_pelvis)
-        LL = angles.lumbosacral_lordosis_deg(v_L1, v_S1)
-        PI_modified = angles.pelvic_incidence_deg(v_pelvis, v_S1)
-
-        return {"PI": PI_modified, "PT": PT, "SS": SS, "LL": LL}
-
-    def _check_overwrite(self, outputDir, caseId, overwrite):
-        npy_path = os.path.join(outputDir, f"{caseId}_image.npy")
-        json_path = os.path.join(outputDir, f"{caseId}_landmarks.json")
-        nrrd_path = os.path.join(outputDir, f"{caseId}_volume.nrrd")
-        exists = [p for p in (npy_path, json_path, nrrd_path) if os.path.exists(p)]
-        if exists and not overwrite:
-            raise ValueError(f"既に存在するファイルがあります: {', '.join(os.path.basename(p) for p in exists)}")
-        return npy_path, json_path, nrrd_path
-
-    def _ras_to_ijk(self, volumeNode, ras_point):
-        ras_to_ijk = vtk.vtkMatrix4x4()
-        volumeNode.GetRASToIJKMatrix(ras_to_ijk)
-        ras_h = [ras_point[0], ras_point[1], ras_point[2], 1.0]
-        ijk_h = ras_to_ijk.MultiplyPoint(ras_h)
-        return ijk_h[:3]
-
-    def _collect_landmarks_ijk(self, markupNode, volumeNode):
-        if markupNode.GetNumberOfControlPoints() != len(self.REQUIRED_LABELS_ORDERED):
-            raise ValueError("マークアップ点が5個ではありません。指定の順番で5点を配置してください。")
-        coords = {}
-        ras = [0.0, 0.0, 0.0]
-        for i, label in enumerate(self.REQUIRED_LABELS_ORDERED):
-            markupNode.SetNthControlPointLabel(i, label)
-            markupNode.GetNthControlPointPositionWorld(i, ras)
-            ijk = self._ras_to_ijk(volumeNode, ras)
-            coords[label] = {"i": float(ijk[0]), "j": float(ijk[1]), "k": float(ijk[2])}
-        return coords
-
-    def _collect_landmarks_ras_2d(self, markupNode, flip_x_axis=False):
-        if markupNode.GetNumberOfControlPoints() != len(self.REQUIRED_LABELS_ORDERED):
-            raise ValueError("マークアップ点が5個ではありません。指定の順番で5点を配置してください。")
-        points = {}
-        coordsRAS = [0.0, 0.0, 0.0]
-        for idx, label in enumerate(self.REQUIRED_LABELS_ORDERED):
-            markupNode.SetNthControlPointLabel(idx, label)
-            markupNode.GetNthFiducialPosition(idx, coordsRAS)
-            x = -coordsRAS[0] if flip_x_axis else coordsRAS[0]
-            y = coordsRAS[1]
-            points[label] = (x, y)
-        return points
-
-    def _volume_metadata(self, volumeNode):
-        spacing = volumeNode.GetSpacing()
-        ijk_to_ras = vtk.vtkMatrix4x4()
-        volumeNode.GetIJKToRASMatrix(ijk_to_ras)
-        direction = [[ijk_to_ras.GetElement(r, c) for c in range(3)] for r in range(3)]
-        origin = [ijk_to_ras.GetElement(r, 3) for r in range(3)]
-        return {"spacing": list(spacing), "ijk_to_ras": direction, "origin_ras": origin}
-
-    def export_training_sample(self, volumeNode, markupNode, outputDir, caseId, flip_x_axis=False, overwrite=False):
-        if markupNode.GetNumberOfControlPoints() != len(self.REQUIRED_LABELS_ORDERED):
-            raise ValueError("マークアップ点が5個ではありません。指定の順番で5点を配置してください。")
-
-        os.makedirs(outputDir, exist_ok=True)
-        npy_path, json_path, nrrd_path = self._check_overwrite(outputDir, caseId, overwrite)
-
-        # Export image array as .npy (full volume). For typical X-ray this will be 2D (1 slice).
-        image_array = slicer.util.arrayFromVolume(volumeNode)
-        np.save(npy_path, image_array)
-
-        # Save the source volume as NRRD for reproducibility.
-        slicer.util.saveNode(volumeNode, nrrd_path)
-
-        # Collect landmarks and angles.
-        landmarks_ijk = self._collect_landmarks_ijk(markupNode, volumeNode)
-        metadata = self._volume_metadata(volumeNode)
-        points_ras_2d = self._collect_landmarks_ras_2d(markupNode, flip_x_axis=flip_x_axis)
-        angles_deg = self.compute_angles_from_points(points_ras_2d)
-
-        with open(json_path, "w", encoding="utf-8") as fp:
-            json.dump(
-                {
-                    "case_id": caseId,
-                    "landmarks_ijk": landmarks_ijk,
-                    "metadata": metadata,
-                    "image_shape": list(image_array.shape),
-                    "angles_deg": angles_deg,
-                    "flip_x_axis": bool(flip_x_axis),
-                },
-                fp,
-                ensure_ascii=False,
-                indent=2,
-            )
-
-        return {"npy": npy_path, "json": json_path, "nrrd": nrrd_path}
+        return logic_angles.compute_angles_from_points(points)
 
 
 class SagittalMeasureAssistTest(ScriptedLoadableModuleTest):
