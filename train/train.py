@@ -17,15 +17,15 @@ from model import SmallUNet
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--data-dir", required=True, help="Folder with *_image.npy and *_landmarks.json")
-    p.add_argument("--save-dir", default="runs", help="Directory to save checkpoints")
-    p.add_argument("--epochs", type=int, default=20)
-    p.add_argument("--batch-size", type=int, default=4)
-    p.add_argument("--lr", type=float, default=1e-3)
-    p.add_argument("--resize", type=int, nargs=2, default=[512, 512], metavar=("H", "W"))
-    p.add_argument("--sigma", type=float, default=3.0, help="Gaussian sigma for heatmaps (pixels)")
-    p.add_argument("--num-workers", type=int, default=2)
-    p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    p.add_argument("--data-dir", required=True, help="Folder with *_image.npy and *_landmarks.json (exported from Slicer)")
+    p.add_argument("--save-dir", default="runs", help="Where to save checkpoints (best.pt / last.pt)")
+    p.add_argument("--epochs", type=int, default=20, help="How many passes over the dataset (more can improve accuracy but takes time)")
+    p.add_argument("--batch-size", type=int, default=4, help="How many samples processed together in one step (fits GPU/CPU memory)")
+    p.add_argument("--lr", type=float, default=1e-3, help="Learning rate (step size for optimization)")
+    p.add_argument("--resize", type=int, nargs=2, default=[512, 512], metavar=("H", "W"), help="Target size after aspect-ratio padding")
+    p.add_argument("--sigma", type=float, default=3.0, help="Gaussian sigma (px) for landmark heatmaps; larger spreads targets wider")
+    p.add_argument("--num-workers", type=int, default=2, help="Data loading threads (increase if CPU has cores to spare)")
+    p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu", help="cpu or cuda")
     return p.parse_args()
 
 
