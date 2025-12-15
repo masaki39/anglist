@@ -1,7 +1,7 @@
 import math
 import pytest
 
-import SagittalMeasureAssist.logic_angles as angles
+import SagittalMeasureAssist.lib.logic_angles as angles
 
 
 def test_vector_from_points():

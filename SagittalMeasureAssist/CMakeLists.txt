@@ -4,16 +4,17 @@ set(MODULE_NAME SagittalMeasureAssist)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
-  assist_controller.py
-  logic_angles.py
-  logic_export.py
-  logic_inference.py
-  ui_measure.py
-  ui_export.py
-  ui_auto.py
   )
 
 set(MODULE_PYTHON_RESOURCES
+  lib/assist_controller.py
+  lib/logic_angles.py
+  lib/logic_export.py
+  lib/logic_inference.py
+  lib/ui_measure.py
+  lib/ui_export.py
+  lib/ui_auto.py
+  lib/__init__.py
   )
 
 #-----------------------------------------------------------------------------

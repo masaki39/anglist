@@ -202,14 +202,14 @@ class AssistController:
             self.measure_ui.resultsTable.item(i, 1).setText(text)
 
     def _format_counter_preview(self):
-        prefix = self.export_ui.prefixEdit.text().strip() or "case"
+        prefix = self.export_ui.prefixEdit.text.strip() or "case"
         return f"{prefix}{self.counter:03d}"
 
     def _update_counter_preview(self):
         self.export_ui.set_next_id_preview(self._format_counter_preview())
 
     def _find_next_case_id(self, outputDir):
-        prefix = self.export_ui.prefixEdit.text().strip() or "case"
+        prefix = self.export_ui.prefixEdit.text.strip() or "case"
         for idx in range(self.counter, 10000):
             candidate = f"{prefix}{idx:03d}"
             npy = os.path.join(outputDir, f"{candidate}_image.npy")
