@@ -144,14 +144,15 @@ class HeatmapDataset(Dataset):
         if self._transform is not None:
             img_np_512 = img_t.squeeze(0).numpy()  # (H,W) float32
             result = self._transform(image=img_np_512, keypoints=coords_resized)
-            # .copy() to own the memory; albumentations may return a view of internal buffers
-            # which torch.from_numpy() would make non-resizable, crashing multi-worker DataLoader
-            img_t = torch.from_numpy(result["image"].copy()).unsqueeze(0)
-            th, tw = self.resize
-            coords_resized = [
-                (max(0.0, min(float(kp[0]), tw - 1.0)), max(0.0, min(float(kp[1]), th - 1.0)))
-                for kp in result["keypoints"]
-            ]
+            # albumentations 2.x may drop out-of-bounds keypoints even with remove_invisible=False;
+            # fall back to unaugmented coords if count changes to keep tensor shapes consistent.
+            if len(result["keypoints"]) == len(coords_resized):
+                img_t = torch.from_numpy(result["image"].copy()).unsqueeze(0)
+                th, tw = self.resize
+                coords_resized = [
+                    (max(0.0, min(float(kp[0]), tw - 1.0)), max(0.0, min(float(kp[1]), th - 1.0)))
+                    for kp in result["keypoints"]
+                ]
 
         hr, wr = self.resize
         heatmap = _make_heatmaps(coords_resized, (hr, wr), sigma=self.sigma)
