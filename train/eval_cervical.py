@@ -6,9 +6,12 @@ Usage:
 """
 
 import argparse
+import io
 import json
 import math
 import os
+import sys
+from contextlib import redirect_stdout
 
 import numpy as np
 import onnxruntime as ort
@@ -129,6 +132,7 @@ def parse_args():
     p.add_argument("--resize", type=int, nargs=2, default=None, metavar=("H", "W"))
     p.add_argument("--splits", default=None, help="splits.json for test-set evaluation")
     p.add_argument("--subset", default="all", choices=["train", "val", "test", "all"])
+    p.add_argument("--report", default=None, help="Save evaluation report to this text file")
     return p.parse_args()
 
 
@@ -338,7 +342,17 @@ def main():
     args = parse_args()
 
     if args.dir:
-        evaluate_dataset(args)
+        if args.report:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                evaluate_dataset(args)
+            output = buf.getvalue()
+            sys.stdout.write(output)
+            with open(args.report, "w", encoding="utf-8") as f:
+                f.write(output)
+            print(f"Report saved to {args.report}")
+        else:
+            evaluate_dataset(args)
         return
 
     if not args.image:
