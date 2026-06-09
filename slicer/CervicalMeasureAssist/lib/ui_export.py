@@ -63,7 +63,15 @@ class ExportUI:
         self.exportTrainingDataCheck.setChecked(False)
         form.addRow("", self.exportTrainingDataCheck)
 
-        self.csvButton = qt.QPushButton("Export CSV")
+        self.autoExportCheck = qt.QCheckBox("Auto-export CSV on volume/case change  [s]")
+        self.autoExportCheck.setChecked(False)
+        self.autoExportCheck.setToolTip(
+            "ボリューム切り替え（DICOMタブ）またはケース切り替え（データセットタブ）時に\n"
+            "自動で CSV エクスポートを実行します。"
+        )
+        form.addRow("", self.autoExportCheck)
+
+        self.csvButton = qt.QPushButton("Export CSV  [s]")
         self.csvButton.toolTip = (
             "Export the current case's angles to angles.csv in the output directory.\n"
             "Creates the file if it does not exist; adds a header row on first write.\n"

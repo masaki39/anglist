@@ -156,16 +156,6 @@ class OnnxInferenceLogic:
                 if pts[ant][0] >= pts[post][0]:
                     warnings.append(f"{ant} が {post} より後方（x座標が逆転）")
 
-        # C7 should be inferior (larger j/y) to C2
-        if "C7_inf_ant" in pts and "C2_ant" in pts:
-            if pts["C7_inf_ant"][1] <= pts["C2_ant"][1]:
-                warnings.append("C7系ランドマークがC2より上方（y座標が逆転）")
-
-        # T1 should be inferior (larger j/y) to C7
-        if "T1_ant" in pts and "C7_inf_ant" in pts:
-            if pts["T1_ant"][1] <= pts["C7_inf_ant"][1]:
-                warnings.append("T1系ランドマークがC7より上方（y座標が逆転）")
-
         # Low confidence landmarks
         LOW_CONF_THRESHOLD = 0.05
         for key, conf in zip(self.landmark_keys, confs):

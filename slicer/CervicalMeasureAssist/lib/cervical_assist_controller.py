@@ -62,7 +62,7 @@ class AssistController:
             (",", self.onVolumePrev),
             (".", self.onVolumeNext),
             ("r", self.onRunInference),
-            ("e", self.onExportCsv),
+            ("s", self.onExportCsv),
             ("F1", self.onShowHotkeys),
         ]
         for key, slot in bindings:
@@ -158,6 +158,8 @@ class AssistController:
         self._fill_case_id_from_source(volumeNode)
         if self.auto_ui.autoRunCheck.isChecked() and self.auto_ui.modelPathEdit.text.strip():
             self.onRunInference()
+        if self.export_ui.autoExportCheck.isChecked():
+            self.onExportCsv()
 
     def _get_patient_id(self, volumeNode):
         try:
@@ -317,6 +319,8 @@ class AssistController:
         if meta:
             self._restore_landmarks_from_json(meta, vol_node)
         self.measure_ui.statusLabel.setText(f"Loaded: {case_id}")
+        if self.export_ui.autoExportCheck.isChecked():
+            self.onExportCsv()
 
     def _restore_landmarks_from_json(self, meta, vol_node):
         lm = meta.get("landmarks_ijk", {})
@@ -383,7 +387,7 @@ class AssistController:
             ",          Previous volume\n"
             ".          Next volume\n"
             "r          Run inference\n"
-            "e          Export CSV\n"
+            "s          Export CSV\n"
             "F1         Show this help",
         )
 
