@@ -29,11 +29,13 @@ SIZES      = [20, 40, 80, 160, 220, 259]
 AUGMENT    = True
 LOSS       = "awl"
 SIGMA      = 15.0
-EPOCHS     = 100
-BATCH_SIZE = 8
-LANDMARKS  = "C2_center,C2_ant,C2_post,C7_sup_post,C7_inf_ant,C7_inf_post,T1_ant,T1_post"
-N_FOLDS    = 5
-SEED       = 42
+EPOCHS      = 100
+BATCH_SIZE  = 4   # 重い場合は2に下げる
+NUM_WORKERS = 0   # 0=メインスレッドのみ（マルチプロセス負荷を排除）
+NICE        = 19  # プロセス優先度（19=最低。他の作業を妨げない）
+LANDMARKS   = "C2_center,C2_ant,C2_post,C7_sup_post,C7_inf_ant,C7_inf_post,T1_ant,T1_post"
+N_FOLDS     = 5
+SEED        = 42
 # =================
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
@@ -106,7 +108,7 @@ def compute_cervical_angles(pts, spacing_mm=1.0):
 
 
 def run_subprocess(cmd):
-    result = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
+    result = subprocess.run(["nice", "-n", str(NICE)] + cmd, cwd=REPO, capture_output=True, text=True)
     if result.returncode != 0:
         print("=== STDOUT ===")
         print(result.stdout[-3000:])
@@ -186,6 +188,7 @@ def run_job(fold, size, test_ids, train_ids, tmp_dir):
         "--loss", LOSS,
         "--epochs", str(EPOCHS),
         "--batch-size", str(BATCH_SIZE),
+        "--num-workers", str(NUM_WORKERS),
         "--split-seed", str(fold * 7 + size),
         "--device", DEVICE,
     ]
@@ -320,4 +323,5 @@ def main():
 
 
 if __name__ == "__main__":
+    os.nice(NICE)
     main()
