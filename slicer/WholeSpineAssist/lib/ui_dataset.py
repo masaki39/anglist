@@ -66,7 +66,9 @@ class DatasetUI:
         self.caseCombo.blockSignals(False)
 
     def set_current_case(self, idx: int) -> None:
+        self.caseCombo.blockSignals(True)
         self.caseCombo.setCurrentIndex(idx)
+        self.caseCombo.blockSignals(False)
 
     def update_case_progress(self, placed: int, total: int) -> None:
         self.caseProgressLabel.setText(f"{placed} / {total}")

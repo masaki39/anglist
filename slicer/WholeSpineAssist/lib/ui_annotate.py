@@ -156,7 +156,8 @@ class AnnotateUI:
                     status_lbl.setStyleSheet("color: #22c55e; font-size: 14px;")  # green
                     place_btn.setStyleSheet("")
                     g_placed += 1
-                    placed += 1
+                    if is_active:
+                        placed += 1
                 else:
                     status_lbl.setText(_ICON_TODO)
                     if is_active:

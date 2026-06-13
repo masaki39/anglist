@@ -80,9 +80,10 @@ class ExportLogic:
         return {"spacing": list(spacing), "ijk_to_ras": direction, "origin_ras": origin}
 
     def _validate_count(self, markupNode):
-        n = len(self._set.point_labels)
-        if markupNode.GetNumberOfControlPoints() != n:
-            raise ValueError(f"マークアップ点が{n}個ではありません。指定の順番で{n}点を配置してください。")
+        placed = {markupNode.GetNthControlPointLabel(i) for i in range(markupNode.GetNumberOfControlPoints())}
+        missing = [lbl for lbl in self._set.point_labels if lbl not in placed]
+        if missing:
+            raise ValueError(f"ラベルが見つかりません: {', '.join(missing)}")
 
     def export_training_sample(self, volumeNode, markupNode, outputDir, caseId, overwrite=False):
         self._validate_count(markupNode)
@@ -136,18 +137,23 @@ class ExportLogic:
             row[name] = f"{val:.2f}" if isinstance(val, float) else ""
 
         if overwrite and os.path.exists(csv_path):
-            existing_rows = []
+            rows = []
+            found = False
             with open(csv_path, "r", newline="", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for r in reader:
-                    if r.get("case_id") != caseId:
-                        existing_rows.append(r)
+                    if r.get("case_id") == caseId:
+                        rows.append(row)
+                        found = True
+                    else:
+                        rows.append(r)
+            if not found:
+                rows.append(row)
             with open(csv_path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
                 writer.writeheader()
-                for r in existing_rows:
+                for r in rows:
                     writer.writerow(r)
-                writer.writerow(row)
         else:
             file_exists = os.path.exists(csv_path)
             with open(csv_path, "a", newline="", encoding="utf-8") as f:

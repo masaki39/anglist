@@ -33,8 +33,6 @@ class AutoUI:
 
         self.landmarkCombo = qt.QComboBox()
         self.landmarkCombo.addItem("Composite")
-        for key in ["L1_ant", "L1_post", "S1_ant", "S1_post", "FH"]:
-            self.landmarkCombo.addItem(key)
         self.landmarkCombo.setEnabled(False)
         form.addRow("Landmark:", self.landmarkCombo)
 

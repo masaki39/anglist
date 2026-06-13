@@ -131,12 +131,12 @@ class AnnotationController:
     # ------------------------------------------------------------------ #
 
     def _on_prev(self):
-        if self._current_idx > 0:
-            self._navigate_to(self._current_idx - 1)
+        if self._case_ids:
+            self._navigate_to((self._current_idx - 1) % len(self._case_ids))
 
     def _on_next(self):
-        if self._current_idx < len(self._case_ids) - 1:
-            self._navigate_to(self._current_idx + 1)
+        if self._case_ids:
+            self._navigate_to((self._current_idx + 1) % len(self._case_ids))
 
     def _on_case_changed(self, idx: int):
         if idx != self._current_idx and idx >= 0:
@@ -286,14 +286,17 @@ class AnnotationController:
         key = self._pending_label
         self._pending_label = None
 
-        # 既存の同名ポイントを削除（上書き再配置）
-        for i in range(n - 1):
-            if node.GetNthControlPointLabel(i) == key:
-                node.RemoveNthControlPoint(i)
-                new_idx = node.GetNumberOfControlPoints() - 1
-                break
-
-        node.SetNthControlPointLabel(new_idx, key)
+        # 既存の同名ポイントを削除（上書き再配置）- StartModify で中間イベントを抑制
+        was_modifying = node.StartModify()
+        try:
+            for i in range(n - 1):
+                if node.GetNthControlPointLabel(i) == key:
+                    node.RemoveNthControlPoint(i)
+                    new_idx = node.GetNumberOfControlPoints() - 1
+                    break
+            node.SetNthControlPointLabel(new_idx, key)
+        finally:
+            node.EndModify(was_modifying)
         self._modified = True
         self._refresh_ui()
         self.annotate_ui.set_active_landmark(None)
@@ -381,5 +384,13 @@ class AnnotationController:
     # ------------------------------------------------------------------ #
 
     def cleanup(self):
+        if self._modified:
+            self._save_current()
         self._detach_observers()
         self.teardown_shortcuts()
+        if self._markup_node:
+            slicer.mrmlScene.RemoveNode(self._markup_node)
+            self._markup_node = None
+        if self._volume_node:
+            slicer.mrmlScene.RemoveNode(self._volume_node)
+            self._volume_node = None

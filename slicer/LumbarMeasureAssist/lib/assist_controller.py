@@ -50,7 +50,9 @@ class AssistController:
         self._dataset_dir = None
         self._dataset_cases = []
         self._dataset_idx = -1
+        self._dataset_vol_node = None
         self._last_angles = None
+        self._dataset_loading = False
         self._connect_signals()
         self._update_counter_preview()
 
@@ -163,7 +165,7 @@ class AssistController:
         if volumeNode is None:
             return
         self._fill_case_id_from_source(volumeNode)
-        if self.auto_ui.autoRunCheck.isChecked() and self.auto_ui.modelPathEdit.text.strip():
+        if not self._dataset_loading and self.auto_ui.autoRunCheck.isChecked() and self.auto_ui.modelPathEdit.text.strip():
             self.onRunInference()
 
     def _get_patient_id(self, volumeNode):
@@ -321,7 +323,10 @@ class AssistController:
             hi = float(np.percentile(flat, 99))
             dn.SetWindowLevelMinMax(lo, hi)
 
+        self._dataset_vol_node = vol_node
+        self._dataset_loading = True
         self.measure_ui.volumeSelector.setCurrentNode(vol_node)
+        self._dataset_loading = False
         slicer.util.setSliceViewerLayers(background=vol_node)
         lm = slicer.app.layoutManager()
         for name in lm.sliceViewNames():
@@ -329,6 +334,8 @@ class AssistController:
 
         if meta:
             self._restore_landmarks_from_json(meta, vol_node)
+        if self.auto_ui.autoRunCheck.isChecked() and self.auto_ui.modelPathEdit.text.strip():
+            self.onRunInference()
         self.measure_ui.statusLabel.setText(f"Loaded: {case_id}")
 
     def _restore_landmarks_from_json(self, meta, vol_node):
@@ -337,18 +344,21 @@ class AssistController:
         vol_node.GetIJKToRASMatrix(ijk_to_ras_mat)
 
         fiducial_node = self._ensureMarkupNodeExists()
-        fiducial_node.RemoveAllControlPoints()
-
-        for key in self._active_set.point_labels:
-            entry = lm.get(key) or {}
-            i_val = entry.get("i")
-            if i_val is None:
-                continue
-            j_val = entry.get("j", 0.0)
-            k_val = entry.get("k", 0.0)
-            ras_h = ijk_to_ras_mat.MultiplyPoint([i_val, j_val, k_val, 1.0])
-            pt_idx = fiducial_node.AddControlPoint(ras_h[0], ras_h[1], ras_h[2])
-            fiducial_node.SetNthControlPointLabel(pt_idx, key)
+        was_modifying = fiducial_node.StartModify()
+        try:
+            fiducial_node.RemoveAllControlPoints()
+            for key in self._active_set.point_labels:
+                entry = lm.get(key) or {}
+                i_val = entry.get("i")
+                if i_val is None:
+                    continue
+                j_val = entry.get("j", 0.0)
+                k_val = entry.get("k", 0.0)
+                ras_h = ijk_to_ras_mat.MultiplyPoint([i_val, j_val, k_val, 1.0])
+                pt_idx = fiducial_node.AddControlPoint(ras_h[0], ras_h[1], ras_h[2])
+                fiducial_node.SetNthControlPointLabel(pt_idx, key)
+        finally:
+            fiducial_node.EndModify(was_modifying)
 
         self.measure_ui.markupSelector.setCurrentNode(fiducial_node)
         self.onUpdateMeasurements()
@@ -362,7 +372,7 @@ class AssistController:
         json_file = os.path.join(self._dataset_dir, f"{case_id}_landmarks.json")
         if not os.path.exists(json_file):
             return
-        vol_node = self.measure_ui.volumeSelector.currentNode()
+        vol_node = self._dataset_vol_node
         if vol_node is None:
             return
 
@@ -471,15 +481,17 @@ class AssistController:
             label = self._pending_label
             self._pending_label = None
             self._reset_pending_button()
-            # Remove existing point with this label if any (replace workflow)
-            for i in range(n - 1):
-                if markupNode.GetNthControlPointLabel(i) == label:
-                    markupNode.RemoveNthControlPoint(i)
-                    break
-            # Label the newly added (now last) point
-            markupNode.SetNthControlPointLabel(
-                markupNode.GetNumberOfControlPoints() - 1, label
-            )
+            was_modifying = markupNode.StartModify()
+            try:
+                for i in range(n - 1):
+                    if markupNode.GetNthControlPointLabel(i) == label:
+                        markupNode.RemoveNthControlPoint(i)
+                        break
+                markupNode.SetNthControlPointLabel(
+                    markupNode.GetNumberOfControlPoints() - 1, label
+                )
+            finally:
+                markupNode.EndModify(was_modifying)
         else:
             # Sequential: assign the first unused label
             used = {markupNode.GetNthControlPointLabel(i) for i in range(n - 1)}
@@ -525,6 +537,7 @@ class AssistController:
             angles = self.logic.compute_angles_from_points(label_to_pos)
         except ValueError as exc:
             self.measure_ui.statusLabel.setText(f"Error: {exc}")
+            self._autosave_dataset()
             return
 
         self._last_angles = angles
@@ -561,10 +574,11 @@ class AssistController:
 
         try:
             self.infer.load_model(model_path)
-            coords_ij, heatmap_2d = self.infer.predict_and_place(volumeNode, markupNode)
+            coords_ij, heatmap_2d = self.infer.predict_and_place(volumeNode, markupNode, flip_x=self.measure_ui.flipXAxisCheckBox.isChecked())
         except Exception as exc:
             logging.exception("Inference failed")
             self.auto_ui.statusLabel.setText(f"Error: inference failed ({exc})")
+            self._for_each_slice(lambda cn: cn.SetForegroundVolumeID(""))
             return
 
         self._heatmap_channels = heatmap_2d  # (L, H, W)
@@ -860,6 +874,11 @@ class AssistController:
 
     def cleanup(self):
         self.teardown_shortcuts()
+        if self._observedMarkupNode is not None:
+            for tag in self._markupObserverTags:
+                self._observedMarkupNode.RemoveObserver(tag)
+            self._markupObserverTags = []
+            self._observedMarkupNode = None
         for node in self._vector_line_nodes.values():
             slicer.mrmlScene.RemoveNode(node)
         self._vector_line_nodes = {}

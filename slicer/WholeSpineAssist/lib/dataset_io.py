@@ -121,7 +121,7 @@ def count_annotated(dataset_dir: str, case_id: str) -> Tuple[int, int]:
     try:
         meta = load_json(dataset_dir, case_id)
         lm = meta.get("landmarks_ijk", {})
-        placed = {k for k in ALL_LANDMARK_KEYS if lm.get(k, {}).get("i") is not None}
+        placed = {k for k in ALL_LANDMARK_KEYS if (lm.get(k) or {}).get("i") is not None}
         variant = detect_variant(placed)
         active = set(active_keys_for_variant(variant))
         return len(placed & active), len(active)

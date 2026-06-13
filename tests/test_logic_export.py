@@ -83,32 +83,35 @@ class TestCheckOverwrite:
 # --- _validate_count ---
 
 class TestValidateCount:
-    def test_correct_count_does_not_raise(self):
+    def test_all_labels_present_does_not_raise(self):
         logic = ExportLogic()
-        node = MagicMock()
-        node.GetNumberOfControlPoints.return_value = 6
+        node = _make_markup_node(_ALL_SIX)
         logic._validate_count(node)
 
-    def test_wrong_count_raises(self):
+    def test_missing_label_raises(self):
         logic = ExportLogic()
-        node = MagicMock()
-        node.GetNumberOfControlPoints.return_value = 3
+        node = _make_markup_node(_ALL_SIX[:3])  # only 3 labels
         with pytest.raises(ValueError):
             logic._validate_count(node)
 
-    def test_zero_count_raises(self):
+    def test_zero_points_raises(self):
         logic = ExportLogic()
-        node = MagicMock()
-        node.GetNumberOfControlPoints.return_value = 0
+        node = _make_markup_node([])
         with pytest.raises(ValueError):
             logic._validate_count(node)
 
-    def test_error_mentions_expected_count(self):
+    def test_error_mentions_missing_label(self):
         logic = ExportLogic()
-        node = MagicMock()
-        node.GetNumberOfControlPoints.return_value = 2
-        with pytest.raises(ValueError, match="6"):
+        node = _make_markup_node(_ALL_SIX[:4])  # FH and L1_center missing
+        with pytest.raises(ValueError, match="FH"):
             logic._validate_count(node)
+
+    def test_extra_unlabeled_points_still_passes(self):
+        # Validate that extra stale points don't break export if required labels are present
+        extra = _ALL_SIX + [("unknown_extra", 0.0, 0.0)]
+        logic = ExportLogic()
+        node = _make_markup_node(extra)
+        logic._validate_count(node)  # should not raise
 
 
 # --- _label_to_index ---

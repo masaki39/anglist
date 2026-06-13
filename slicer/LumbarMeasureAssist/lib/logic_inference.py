@@ -147,16 +147,19 @@ class OnnxInferenceLogic:
             channels.append(_resize_bilinear(crop, h_orig, w_orig))
         return np.stack(channels, axis=0)
 
-    def _check_anatomy(self, coords_ij: List[Tuple[float, float]], confs: List[float]) -> List[str]:
+    def _check_anatomy(self, coords_ij: List[Tuple[float, float]], confs: List[float], flip_x: bool = False) -> List[str]:
         """Return list of warning strings for anatomically implausible predictions."""
         warnings = []
         pts = {k: xy for k, xy in zip(self.landmark_keys, coords_ij)}
 
-        # Anterior landmark should have smaller x (i) than posterior
+        # Anterior landmark should have smaller x (i) than posterior in standard orientation.
+        # When flip_x is True the image is mirrored, so anterior has larger x.
         for prefix in ("L1", "S1"):
             ant, post = f"{prefix}_ant", f"{prefix}_post"
             if ant in pts and post in pts:
-                if pts[ant][0] >= pts[post][0]:
+                ant_x, post_x = pts[ant][0], pts[post][0]
+                reversed_x = (ant_x <= post_x) if flip_x else (ant_x >= post_x)
+                if reversed_x:
                     warnings.append(f"{ant} が {post} より後方（x座標が逆転）")
 
         # L1 should be superior (smaller j/y) to S1
@@ -172,7 +175,7 @@ class OnnxInferenceLogic:
 
         return warnings
 
-    def predict_and_place(self, volumeNode, markupNode) -> Tuple[List[Tuple[float, float]], np.ndarray]:
+    def predict_and_place(self, volumeNode, markupNode, flip_x: bool = False) -> Tuple[List[Tuple[float, float]], np.ndarray]:
         if self.session is None:
             raise RuntimeError("モデルがロードされていません。")
         img2d = self._extract_slice(volumeNode)
@@ -182,21 +185,24 @@ class OnnxInferenceLogic:
         heatmap_2d = self._build_overlay_heatmap(outputs[0], img2d.shape, scale, pad_x, pad_y)
 
         # 解剖学的妥当性チェック
-        anatomy_warnings = self._check_anatomy(coords_ij, confs)
+        anatomy_warnings = self._check_anatomy(coords_ij, confs, flip_x=flip_x)
         if anatomy_warnings:
             msg = "【警告】AI予測に問題の可能性があります:\n" + "\n".join(f"  ・{w}" for w in anatomy_warnings)
             slicer.util.warningDisplay(msg, windowTitle="SagittalMeasureAssist")
 
-        # モデルが予測するラベルのみ更新し、その他の点は保持する
         label_to_idx = {}
         for i in range(markupNode.GetNumberOfControlPoints()):
             label_to_idx[markupNode.GetNthControlPointLabel(i)] = i
 
-        for key, (x, y) in zip(self.landmark_keys, coords_ij):
-            ras = self._ijk_to_ras(volumeNode, x, y, 0.0)
-            if key in label_to_idx:
-                markupNode.SetNthControlPointPosition(label_to_idx[key], ras[0], ras[1], ras[2])
-            else:
-                markupNode.AddControlPoint(ras[0], ras[1], ras[2])
-                markupNode.SetNthControlPointLabel(markupNode.GetNumberOfControlPoints() - 1, key)
+        was_modifying = markupNode.StartModify()
+        try:
+            for key, (x, y) in zip(self.landmark_keys, coords_ij):
+                ras = self._ijk_to_ras(volumeNode, x, y, 0.0)
+                if key in label_to_idx:
+                    markupNode.SetNthControlPointPosition(label_to_idx[key], ras[0], ras[1], ras[2])
+                else:
+                    markupNode.AddControlPoint(ras[0], ras[1], ras[2])
+                    markupNode.SetNthControlPointLabel(markupNode.GetNumberOfControlPoints() - 1, key)
+        finally:
+            markupNode.EndModify(was_modifying)
         return coords_ij, heatmap_2d
