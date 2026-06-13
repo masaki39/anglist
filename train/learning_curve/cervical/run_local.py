@@ -218,6 +218,8 @@ def run_job(fold, size, test_ids, train_ids, tmp_dir):
             meta = json.load(fp)
         spacing = meta.get("metadata", {}).get("spacing", [1.0])[0]
         lm = meta["landmarks_ijk"]
+        if any(lm.get(name) is None for name in LANDMARK_ORDER):
+            continue
         gt_ang = meta.get("angles_deg", {})
 
         pred_ij = {}
@@ -236,17 +238,18 @@ def run_job(fold, size, test_ids, train_ids, tmp_dir):
                     angle_errs[a].append(abs(ai_ang[a] - gt_ang[a]))
 
     # 外れ値検出（>10mm）
+    n_eval = len(all_errors[LANDMARK_ORDER[0]])
     is_outlier = [max(all_errors[k][i] for k in LANDMARK_ORDER) > 10.0
-                  for i in range(len(test_ids))]
+                  for i in range(n_eval)]
     n_outliers = sum(is_outlier)
     ok_idx = [i for i, o in enumerate(is_outlier) if not o]
 
-    all_vals = [all_errors[k][i] for i in range(len(test_ids)) for k in LANDMARK_ORDER]
+    all_vals = [all_errors[k][i] for i in range(n_eval) for k in LANDMARK_ORDER]
     ok_vals  = [all_errors[k][i] for i in ok_idx for k in LANDMARK_ORDER]
 
     results = {
         "fold": fold, "size": size, "variant": VARIANT,
-        "n_test": len(test_ids), "device": DEVICE,
+        "n_test": n_eval, "n_test_total": len(test_ids), "device": DEVICE,
         "elapsed_sec": round(time.time() - t0),
         "overall": {
             "mre_mm": sum(all_vals) / len(all_vals),
@@ -273,7 +276,7 @@ def run_job(fold, size, test_ids, train_ids, tmp_dir):
     mre = results["overall"]["mre_mm"]
     sdr = results["overall"]["sdr4"]
     elapsed = results["elapsed_sec"]
-    print(f"  MRE={mre:.2f}mm  SDR@4={sdr:.1f}%  outliers={n_outliers}/{len(test_ids)}  {elapsed}s  -> saved")
+    print(f"  MRE={mre:.2f}mm  SDR@4={sdr:.1f}%  outliers={n_outliers}/{n_eval}(total={len(test_ids)})  {elapsed}s  -> saved")
 
     # 訓練データ一時ディレクトリを削除（ディスク節約）
     shutil.rmtree(train_dir, ignore_errors=True)
@@ -323,5 +326,8 @@ def main():
 
 
 if __name__ == "__main__":
-    os.nice(NICE)
+    try:
+        os.nice(NICE)
+    except PermissionError:
+        pass  # already running at max nice level
     main()

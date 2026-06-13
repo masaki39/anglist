@@ -56,7 +56,6 @@ class AnnotationController:
         self._loading_variant: bool = False
 
         self._connect_signals()
-        self._setup_shortcuts()
         if os.path.isdir(_DEFAULT_DATASET_DIR):
             self._load_dataset(_DEFAULT_DATASET_DIR)
 
@@ -80,11 +79,11 @@ class AnnotationController:
         for key, (place_btn, _) in self.annotate_ui.rows.items():
             place_btn.connect("clicked()", lambda k=key: self._on_place(k))
 
-    def _setup_shortcuts(self):
+    def setup_shortcuts(self):
         mw = slicer.util.mainWindow()
         bindings = [
             (qt.QKeySequence(qt.Qt.Key_Space), self._on_place_next),
-            (qt.QKeySequence("S"),             self._on_save),
+            (qt.QKeySequence("Ctrl+S"),         self._on_save),
             (qt.QKeySequence(","),             self._on_prev),
             (qt.QKeySequence("."),             self._on_next),
         ]
@@ -93,6 +92,12 @@ class AnnotationController:
             sc.setContext(qt.Qt.ApplicationShortcut)
             sc.connect("activated()", slot)
             self._shortcuts.append(sc)
+
+    def teardown_shortcuts(self):
+        for sc in self._shortcuts:
+            sc.setEnabled(False)
+            sc.deleteLater()
+        self._shortcuts = []
 
     # ------------------------------------------------------------------ #
     #  データセット読み込み
@@ -377,6 +382,4 @@ class AnnotationController:
 
     def cleanup(self):
         self._detach_observers()
-        for sc in self._shortcuts:
-            sc.setParent(None)
-        self._shortcuts = []
+        self.teardown_shortcuts()

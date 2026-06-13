@@ -63,6 +63,14 @@ class WholeSpineAssistWidget(ScriptedLoadableModuleWidget):
 
         self.layout.addStretch()
 
+    def enter(self):
+        if hasattr(self, "controller"):
+            self.controller.setup_shortcuts()
+
+    def exit(self):
+        if hasattr(self, "controller"):
+            self.controller.teardown_shortcuts()
+
     def cleanup(self):
         if hasattr(self, "controller"):
             self.controller.cleanup()

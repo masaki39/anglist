@@ -70,6 +70,12 @@ class LumbarMeasureAssistWidget(ScriptedLoadableModuleWidget):
 
         self.layout.addStretch(1)
 
+    def enter(self):
+        self.controller.setup_shortcuts()
+
+    def exit(self):
+        self.controller.teardown_shortcuts()
+
     def cleanup(self):
         self.controller.cleanup()
 

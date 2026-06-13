@@ -52,11 +52,10 @@ class AssistController:
         self._dataset_idx = -1
         self._last_angles = None
         self._connect_signals()
-        self._setup_shortcuts()
         self._update_counter_preview()
 
     # --- Shortcuts ---
-    def _setup_shortcuts(self):
+    def setup_shortcuts(self):
         mw = slicer.util.mainWindow()
         bindings = [
             (",", self.onVolumePrev),
@@ -74,6 +73,12 @@ class AssistController:
         space_sc.setContext(qt.Qt.ApplicationShortcut)
         space_sc.connect("activated()", self._on_place_next)
         self._shortcuts.append(space_sc)
+
+    def teardown_shortcuts(self):
+        for sc in self._shortcuts:
+            sc.setEnabled(False)
+            sc.deleteLater()
+        self._shortcuts = []
 
     # --- Signal wiring ---
     def _connect_signals(self):
@@ -841,10 +846,7 @@ class AssistController:
         return None
 
     def cleanup(self):
-        for sc in self._shortcuts:
-            sc.setEnabled(False)
-            sc.deleteLater()
-        self._shortcuts = []
+        self.teardown_shortcuts()
         for node in self._vector_line_nodes.values():
             slicer.mrmlScene.RemoveNode(node)
         self._vector_line_nodes = {}
